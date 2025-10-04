@@ -120,11 +120,11 @@ fi
 if ksu_manual_hook; then
   # Apply manual hook patch based on KSU variant
   if [[ $KSU == "Suki" ]]; then
-    log "Applying manual hook patch for SukiSU (scope_min_manual_hooks_v1.5.patch)"
-    patch -p1 < $workdir/kernel-patches/scope_min_manual_hooks_v1.5.patch
+    log "Applying manual hook patch for SukiSU"
+    patch -p1 < $workdir/kernel-patches/sukisu_scope_min_manual_hooks_v1.5.patch
   else
-    log "Applying manual hook patch for KernelSU (manual-hook.patch)"
-    patch -p1 < $workdir/kernel-patches/manual-hook.patch
+    log "Applying manual hook patch for KernelSU"
+    patch -p1 < $workdir/kernel-patches/kernelsu_min_scope_syscall_hooks_v1.5
   fi
 
   config --enable CONFIG_KSU_MANUAL_HOOK
@@ -141,9 +141,9 @@ fi
 # ✅ NEW BRANDING SECTION
 # ---
 log "🧹 Finalizing build configuration with branding..."
-# Construct the brand name. The kernel will automatically add the base version (e.g., 5.10.243)
-# So, BRAND="-SuiKernel-HSKY4-KSUN+SuSFS" results in "5.10.243-SuiKernel-HSKY4-KSUN+SuSFS"
-BRAND="-SuiKernel-${KERNEL_NAME}-${VARIANT}"
+
+INTERNAL_BRAND="${KERNEL_NAME}-${VARIANT}"
+export KERNEL_RELEASE_NAME="${KERNEL_NAME}-${LINUX_VERSION}-${VARIANT}"
 
 # Apply branding-specific modifications from your snippet
 if [ -f "./common/build.config.gki" ]; then
@@ -151,10 +151,11 @@ if [ -f "./common/build.config.gki" ]; then
     sed -i 's/check_defconfig//' ./common/build.config.gki
 fi
 
-# Set the kernel's local version and disable auto-generation
-config --set-str CONFIG_LOCALVERSION "$BRAND"
+# Set the kernel's local version for uname -r and disable auto-generation
+config --set-str CONFIG_LOCALVERSION "$INTERNAL_BRAND"
 config --disable CONFIG_LOCALVERSION_AUTO
-log "✅ Build configuration completed. LOCALVERSION set to: $BRAND"
+log "✅ Internal kernel version set to: ${LINUX_VERSION}${INTERNAL_BRAND}"
+log "✅ User-facing release name set to: $KERNEL_RELEASE_NAME"
 
 
 # Declare needed variables
