@@ -129,17 +129,22 @@ fi
 # ---
 log "🧹 Finalizing build configuration with branding..."
 
-# Get the GitHub Release Tag, using HSKY4 as a fallback for local builds
-RELEASE_TAG="${GITHUB_REF_NAME:-HSKY4}"
+# Determine the release tag. Priority:
+# 1. Version passed from the release workflow (WORKFLOW_HSKY_VERSION).
+# 2. Fallback for manual or beta builds, using the branch name or "LOCAL".
+if [[ -n "$WORKFLOW_HSKY_VERSION" ]]; then
+  RELEASE_TAG="$WORKFLOW_HSKY_VERSION"
+else
+  RELEASE_TAG="${GITHUB_REF_NAME:-LOCAL}"
+fi
 
-# This sets the string that is appended to the base kernel version for `uname -r`
-# It will result in an output like: 5.10.243-SuiKernel-HSKY4-SUKISU+SuSFS
+# This defines the user-facing name for the zip file and installer string.
+# Format: SuiKernel-5.10.243-HSKY4-SUKISU+SuSFS
+export KERNEL_RELEASE_NAME="${KERNEL_NAME}-${LINUX_VERSION}-${RELEASE_TAG}-${VARIANT}"
+
+# This sets the string appended to the base kernel version for `uname -r`.
+# Format: 5.10.243-SuiKernel-HSKY4-SUKISU+SuSFS
 INTERNAL_BRAND="-${KERNEL_NAME}-${RELEASE_TAG}-${VARIANT}"
-
-# This defines the user-facing name for the zip file and installer string
-# It will result in a string like: SuiKernel-HSKY4-5.10.243-SUKISU+SuSFS
-export KERNEL_RELEASE_NAME="${KERNEL_NAME}-${RELEASE_TAG}-${LINUX_VERSION}-${VARIANT}"
-
 
 # Apply branding-specific modifications from your snippet
 if [ -f "./common/build.config.gki" ]; then
@@ -205,19 +210,12 @@ if [[ $KSU == "Suki" ]]; then
   log "Fetching SukiSU patcher URL..."
   LATEST_SUKISU_PATCH=""
   for i in {1..5}; do
-      # Use jq for robust JSON parsing and get the first matching URL
       LATEST_SUKISU_PATCH=$(curl -s "https://api.github.com/repos/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest" | jq -r '.assets[] | select(.name | endswith("patch_linux")) | .browser_download_url' | head -n 1)
-
-      if [[ -n "$LATEST_SUKISU_PATCH" ]]; then
-          log "URL found successfully."
-          break # Exit loop if URL is found
-      fi
-
+      [[ -n "$LATEST_SUKISU_PATCH" ]] && break
       log "Attempt $i/5 failed to get URL. Retrying in 3 seconds..."
       sleep 3
   done
 
-  # If the variable is still empty after all retries, exit with an error
   if [[ -z "$LATEST_SUKISU_PATCH" ]]; then
       error "Could not fetch SukiSU patcher URL after 5 attempts. Aborting."
       exit 1
@@ -278,26 +276,13 @@ if [[ $BUILD_BOOTIMG == "true" ]]; then
   generate_bootimg() {
     local kernel="$1"
     local output="$2"
-
-    # Create boot image
     log "Creating $output"
-    $MKBOOTIMG --header_version 4 \
-      --kernel "$kernel" \
-      --output "$output" \
-      --ramdisk out/ramdisk \
-      --os_version 12.0.0 \
-      --os_patch_level "2099-12"
-
+    $MKBOOTIMG --header_version 4 --kernel "$kernel" --output "$output" --ramdisk out/ramdisk \
+      --os_version 12.0.0 --os_patch_level "2099-12"
     sleep 0.5
-
-    # Sign the boot image
     log "Signing $output"
-    $AVBTOOL add_hash_footer \
-      --partition_name boot \
-      --partition_size $((64 * 1024 * 1024)) \
-      --image "$output" \
-      --algorithm SHA256_RSA2048 \
-      --key $BOOT_SIGN_KEY_PATH
+    $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) \
+      --image "$output" --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
   }
 
   tempdir=$(mktemp -d) && cd $tempdir
@@ -313,10 +298,8 @@ if [[ $BUILD_BOOTIMG == "true" ]]; then
   for format in raw lz4 gz; do
     kernel="./Image"
     [[ $format != "raw" ]] && kernel+=".$format"
-
     _output="${BOOTIMG_NAME/dummy1/$format}"
     generate_bootimg "$kernel" "$_output"
-
     mv "$_output" $workdir
   done
   cd $workdir
